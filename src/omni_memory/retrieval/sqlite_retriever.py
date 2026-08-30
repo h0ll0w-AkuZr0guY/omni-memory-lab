@@ -1,5 +1,6 @@
 import re
 
+from omni_memory.retrieval.protocol import MemoryRetriever
 from omni_memory.schemas.query import RetrievedMemory
 from omni_memory.stores.sqlite_store import SQLiteMemoryStore
 
@@ -17,8 +18,8 @@ def _terms(query: str) -> list[str]:
     return list(dict.fromkeys([normalized, *bigrams]))
 
 
-class SQLiteMemoryRetriever:
-    """第一版确定性检索基线；后续可替换为 BM25/向量/RRF 实现。"""
+class SQLiteMemoryRetriever(MemoryRetriever):
+    """第一版确定性检索基线；后续可替换为 BM25、向量或混合时序实现。"""
 
     def __init__(self, store: SQLiteMemoryStore):
         self.store = store
