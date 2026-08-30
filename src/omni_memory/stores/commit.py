@@ -22,6 +22,7 @@ def commit_candidates(
             ingested_at=episode.ingested_at,
             valid_at=candidate.valid_at,
             confidence=candidate.confidence,
+            metadata=episode.metadata,
         )
         for index, candidate in enumerate(valid)
     ]

@@ -67,3 +67,24 @@ def answer_metrics(
         citation_recall=citation_recall,
         abstention_correct=abstention_correct,
     )
+
+from omni_memory.schemas.query import RetrievedMemory
+
+
+def temporal_leakage_rate(
+    retrieved: list[RetrievedMemory],
+    *,
+    visible_until_chapter: int,
+) -> float:
+    """计算检索结果中来自 cutoff 之后章节的比例。"""
+
+    if not retrieved:
+        return 0.0
+
+    leaked = 0
+    for item in retrieved:
+        chapter_index = item.memory.metadata.get("chapter_index")
+        if isinstance(chapter_index, int) and chapter_index > visible_until_chapter:
+            leaked += 1
+
+    return leaked / len(retrieved)

@@ -47,6 +47,7 @@ class CommittedFact(BaseModel):
     valid_at: datetime | None = None
     confidence: float = Field(ge=0.0, le=1.0)
     status: Literal["committed", "retracted"] = "committed"
+    metadata: dict[str, str | int | float | bool] = Field(default_factory=dict)
 
 
 class ValidationIssue(BaseModel):
