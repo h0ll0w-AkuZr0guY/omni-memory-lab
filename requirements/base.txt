@@ -1,0 +1,9 @@
+# requirements/base.txt
+# 运行时依赖：保持合理范围，便于跨平台协作
+langchain>=1.0,<2.0
+langgraph>=1.0,<2.0
+langchain-openai>=1.0,<2.0
+pydantic>=2.10,<3.0
+pydantic-settings>=2.6,<3.0
+python-dotenv>=1.0,<2.0
+httpx>=0.28,<1.0

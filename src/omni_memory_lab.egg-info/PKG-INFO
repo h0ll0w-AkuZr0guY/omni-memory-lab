@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: omni-memory-lab
+Version: 0.1.0
+Summary: An evidence-first enterprise memory system built with LangChain and LangGraph
+Requires-Python: <3.14,>=3.13
+Requires-Dist: langchain<2.0,>=1.0
+Requires-Dist: langgraph<2.0,>=1.0
+Requires-Dist: langchain-openai<2.0,>=1.0
+Requires-Dist: pydantic<3.0,>=2.10
+Requires-Dist: pydantic-settings<3.0,>=2.6
+Requires-Dist: python-dotenv<2.0,>=1.0
+Requires-Dist: httpx<1.0,>=0.28
+Provides-Extra: dev
+Requires-Dist: pytest<9.0,>=8.3; extra == "dev"
+Requires-Dist: pytest-asyncio<1.0,>=0.24; extra == "dev"
+Requires-Dist: ruff<1.0,>=0.8; extra == "dev"
+Requires-Dist: mypy<2.0,>=1.13; extra == "dev"

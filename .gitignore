@@ -1,0 +1,15 @@
+# 本地密钥文件，不得提交
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.pyc
+
+# 实验输出与本地数据
+artifacts/
+data/raw/
+data/processed/
+*.log
+requirements.lock.txt
