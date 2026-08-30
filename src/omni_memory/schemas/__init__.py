@@ -14,6 +14,7 @@ from omni_memory.schemas.memory import (
     MemoryStatus,
     ValidationIssue,
 )
+from omni_memory.schemas.query import GroundedAnswer, MemoryQuery, RetrievedMemory
 
 __all__ = [
     "CommittedFact",
@@ -23,9 +24,12 @@ __all__ = [
     "EvaluationCase",
     "FactCandidate",
     "FactExtraction",
+    "GroundedAnswer",
     "MemoryAuditEvent",
     "MemoryKind",
+    "MemoryQuery",
     "MemoryStatus",
+    "RetrievedMemory",
     "SourceSpan",
     "ValidationIssue",
 ]
