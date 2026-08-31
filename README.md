@@ -1,72 +1,115 @@
 # Omni Memory Lab
 
-Omni Memory Lab 是一个面向 **neuro-book 长篇小说创作场景**的本地优先、证据优先记忆后端实验工程。它的目标不是让模型“尽可能记住”，而是让每条长期记忆都能够被验证、定位、审计、检索、引用、更新和评估。
+Omni Memory Lab 是一个**通用、可复用、本地优先、证据优先、可审计的多模态长期记忆基础设施**。它不专属于 neuro-book，也不把任何单一应用的数据结构硬编码进核心层。不同应用通过 adapter/mapper 将自己的事件、消息、文件、图片、实体和业务字段映射到统一记忆协议，再通过稳定接口完成记忆的写入、读取、更新、删除和审计。
 
-当前仓库处于 **S1 核心垂直切片已完成、S2 真实小说评估进行中、S3 后端服务尚未开始**的阶段。它还不是可以直接部署到生产环境的完整服务；本 README 既是使用手册，也是当前工程边界的明确声明。
+长篇小说是本项目的优先验证场景，因为它同时暴露了长期一致性、角色关系、时间线、前文引用、事实更新、版权数据隔离和图文资产管理等复杂问题。neuro-book 是第一个真实 consumer 和适配器场景，而不是项目的领域边界。
 
-## 项目主线
+## 一句话目标
+
+> 做一套类似 mem0、memU、Zep 和 LangChain memory 可复用能力的底层记忆平台，并在长篇小说与 neuro-book 场景中用真实数据验证其可靠性；核心记忆协议不绑定任何具体应用。
+
+## 核心分层
 
 ```text
-TXT/EPUB/应用事件
-    -> 解析与 Episode 标准化
-    -> LangGraph 抽取工作流
-    -> evidence_quote 精确校验
-    -> review / commit policy
-    -> SQLite 版本化记忆
-    -> 检索
-    -> 带 citation 的 grounded query
-    -> 评估、审计与服务 API
+应用层：neuro-book / coding agent / assistant / knowledge app
+    -> Adapter / Mapper：应用事件、消息、文件、图片、实体 -> 通用 MemoryInput
+    -> Memory API：ingest / retrieve / update / delete / link / audit
+    -> Workflow：LangGraph 抽取、校验、审核、提交和查询编排
+    -> Memory Core：版本、来源、时序、实体、策略和租户隔离
+    -> Retrieval：BM25 + semantic + multimodal + temporal + rerank
+    -> Storage：metadata DB + vector index + blob/object storage
 ```
 
-LangGraph 负责工作流编排，SQLite 负责当前本地持久化，LLM 只负责受约束的候选抽取和答案生成。任何候选事实都不能绕过 evidence 校验直接成为 committed memory。
+LangGraph 是工作流编排层，不是整个后端。长期记忆数据不应混在 graph state 中：短期线程状态使用 checkpoint，跨线程的用户偏好、事实、实体和资产关系使用长期 store。[1]
 
-## 当前已实现
+## 通用记忆协议
 
-| 模块 | 状态 | 说明 |
+核心字段采用“最小必填 + 推荐字段 + 扩展 payload”，避免要求每个应用填写不适用字段：
+
+| 层级 | 字段 | 作用 |
 |---|---|---|
-| Pydantic 领域模型 | 已完成 | Episode、FactCandidate、CommittedFact、Query、Asset |
-| LangGraph ingestion | 已完成核心路径 | extract -> validate -> persist/review |
-| 证据校验 | 已完成基础版 | evidence quote 必须是 Episode 原文连续子串 |
-| SQLite store | 已完成原型版 | memories、audit events、assets |
-| Query graph | 已完成基础版 | retrieval -> LLM answer -> citation grounding -> abstention |
-| TXT/EPUB 解析 | 已完成 | 本地解析，不上传小说原文 |
-| 小说评估框架 | 进行中 | cutoff、gold span、Recall@k、MRR、citation、leakage |
-| Hybrid Temporal Retrieval | 未开始 | 后续实现 BM25 + semantic + temporal |
-| HTTP 后端服务 | 未开始 | 下一阶段优先交付 |
-| 多模态理解 | 未开始 | 当前仅登记 EPUB 图片元数据 |
-| LLM 调用审计 | 未完成 | 下一阶段记录 call id、耗时、状态和 usage 可得性 |
+| 最小必填 | `memory_id`、`tenant_id`、`namespace`、`memory_type`、`content` 或 `asset_ref`、`source_ref`、`created_at`、`status` | 身份、隔离、内容/资产、来源和生命周期 |
+| 推荐 | `subject_refs`、`valid_time`、`observed_at`、`confidence`、`tags`、`provenance`、`supersedes` | 实体、时序、更新、检索和审核 |
+| 扩展 | `app_payload`、`schema_version`、`modality_metadata`、`policy` | 承载不同应用的业务字段 |
 
-完整审计和路线图见 [`docs/engineering-baseline-v0.1.md`](docs/engineering-baseline-v0.1.md)。设计草案见 [`docs/design-v0.md`](docs/design-v0.md)，评估协议见 [`docs/evaluation-v0.md`](docs/evaluation-v0.md)。
+核心层只保证协议语义，不规定应用必须使用“角色”“章节”或“用户偏好”等具体业务名词。
 
-## Windows 安装
+## 记忆生命周期
 
-项目目标环境是 Python 3.13。建议在仓库根目录创建并激活虚拟环境：
+应用通过统一操作与底层交互：
+
+| 应用动作 | 通用操作 | 平台行为 |
+|---|---|---|
+| 写入一条新事实 | `ingest` / `upsert` | 抽取候选、验证 evidence、执行 commit policy、形成版本 |
+| 修改已有事实 | `update` / `revise` | 保留旧版本，建立 `supersedes`，重新生成并验证来源 |
+| 删除一条事实 | `delete` | 默认 soft delete，记录审计；按 retention policy 清理派生索引 |
+| 查询记忆 | `retrieve` | 返回排序结果、来源、时间和可解释分数 |
+| 让 Agent 回答 | `query` | 检索后生成 grounded answer，强制 citation 或 abstention |
+| 上传图片/文件 | `asset.ingest` | hash 去重、登记 blob、生成派生表示并建立链接 |
+| 生成新图片 | `asset.create` | 记录生成模型、prompt hash、seed、父资产和应用来源 |
+| 关联图片与事实 | `link` | 建立 asset、memory、entity、document 之间的可审计关系 |
+
+## 多模态设计
+
+图片不是数据库中的一行 metadata，也不应把二进制直接塞进关系表。平台拆分为五层：
+
+1. **Blob 层**保存原始文件，按 SHA-256 寻址，可使用本地文件系统、S3-compatible storage 或 MinIO。
+2. **Asset manifest 层**记录媒体类型、大小、hash、尺寸、来源、存储 URI、租户和生命周期状态。
+3. **Derived representation 层**保存 OCR、caption、实体/对象、缩略图、视觉 embedding，以及生成这些表示的模型和 pipeline 版本。
+4. **Memory link 层**把图片与文本记忆、实体、章节、会话建立可审计多对多关系。
+5. **Retrieval/grounding 层**融合文本 BM25、文本向量、图像向量、OCR/caption、实体和时间信号，并在答案中返回 `memory_id`、`asset_id` 及 provenance。
+
+这样本地开发可以先使用 SQLite + 本地 blob，后续切换到 Postgres/pgvector + S3/MinIO 时不改变应用接口。
+
+## neuro-book 如何接入
+
+neuro-book 不直接访问 SQLite，不需要知道内部表结构。它实现一个 adapter，将自己的消息、章节、角色设定、时间线、生成图片和用户修改映射为通用操作：
+
+```text
+neuro-book chapter/event
+    -> NeuroBookAdapter.to_memory_input(...)
+    -> /v1/memories/ingest
+    -> committed memory + provenance + version
+
+neuro-book query
+    -> /v1/query 或 /v1/memories/search
+    -> grounded answer + citations + asset refs
+
+neuro-book edit/delete
+    -> /v1/memories/{id}/revise 或 /v1/memories/{id}/delete
+    -> new version / tombstone + audit event
+```
+
+同一核心接口未来也可以被个人助手、coding agent、客服系统或知识库应用使用。
+
+## 当前真实完成度
+
+| 阶段 | 定义 | 状态 |
+|---|---|---|
+| S0 | 通用领域模型与证据规则 | 已完成基础版 |
+| S1 | 离线 ingest -> extract -> validate -> store -> query | 已完成核心切片 |
+| S2 | 授权 TXT/EPUB 真实评估 | 进行中 |
+| S3 | 通用 Memory API、任务、幂等和审计 | 尚未完成 |
+| S4 | 可复用 Adapter/Mapper 与 Agent tool contract | 尚未完成 |
+| S5 | BM25 + semantic + multimodal + temporal retrieval | 尚未完成 |
+| S6 | 图片/文件 blob 与派生表示生命周期 | 目前只有资产元数据 |
+| S7 | API/模型调用观测、回归门禁和运维文档 | 尚未完成 |
+
+因此当前仓库不是“完成的生产记忆平台”，而是通用平台的核心验证切片。后续每个阶段都要同时提交代码、文档和本地验收命令。
+
+## 本地安装与验证
 
 ```powershell
 py -3.13 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -r requirements\dev.txt
-```
-
-验证依赖和代码质量：
-
-```powershell
 python -m pip check
 python -m pytest -q
 python -m ruff check src tests scripts
 ```
 
-## 配置 OpenAI-compatible 模型
-
-复制配置模板并填写本地 `.env`。`.env` 永远不要提交 Git：
-
-```powershell
-Copy-Item .env.example .env
-notepad .env
-```
-
-配置格式如下：
+配置 `.env`：
 
 ```dotenv
 API_KEY=your-provider-key
@@ -78,111 +121,34 @@ LANGCHAIN_API_KEY=
 LANGCHAIN_PROJECT=omni-memory-lab
 ```
 
-`BASE_URL`、模型名称和 API key 必须属于同一个 provider 路由。项目使用 `langchain-openai.ChatOpenAI` 的 OpenAI-compatible 接口；初始化模型对象本身不会产生网络请求，真正请求发生在 `invoke` 或 `ainvoke`。
-
-## 明确验证是否调用 LLM
-
-先运行最小真实模型 smoke test：
+真实 LLM smoke test：
 
 ```powershell
 python scripts\smoke_model.py
 ```
 
-成功时会打印：
+当前版本会真实调用 `ChatOpenAI.invoke`，但还没有完整记录 provider request id 和 token usage；这将作为 S3 的首要工程任务。小说数据只在本地 `data/raw` 处理，禁止提交原文、图片、SQLite、进度 JSONL、候选 JSONL 和密钥。
 
-```text
-model_call=ok
-elapsed_seconds=...
-response=模型连接成功
-```
+## 文档与反馈循环
 
-这只能证明目标接口返回了响应，不能证明供应商账户页面已经即时更新额度。当前版本还没有保存 provider request id 和 token usage；这属于下一阶段的观测缺口。不要把一次业务脚本的长耗时误认为“没有调用”，也不要把 `needs_review` 误认为“没有调用”：模型可能已经返回候选，只是候选的 evidence_quote 没有通过精确子串校验。
+每次远端提交必须配套一个 `docs/verification-<milestone>.md`：
 
-## 处理本地授权小说
+| 文档部分 | 必须回答的问题 |
+|---|---|
+| Changed | 这次具体改了哪些文件和行为？ |
+| Run | Windows 本地完整命令是什么？ |
+| Expected | 成功时应看到什么关键输出？ |
+| Failure | 失败时应收集哪些脱敏日志？ |
+| Acceptance | 哪些条件满足后才能进入下一阶段？ |
+| Feedback | 用户只需反馈哪些字段，不要上传原文或密钥？ |
 
-真实 TXT/EPUB 只在本地 `data/raw` 中处理。不要把小说、数据库、进度文件或完整候选文件提交 Git。先检查来源：
+## 后续主线
 
-```powershell
-python scripts\inspect_sources.py
-python scripts\parse_sources.py "data/raw/01我想成为影之强者！.epub"
-```
+先实现通用 Memory API、application service、run/model-call audit、幂等和 update/delete 生命周期；然后实现 Adapter contract；随后实现 hybrid temporal retrieval；最后实现多模态 blob、OCR/caption/embedding、图文链接和 grounded multimodal query。每次变更都会同步提供本地验证文档，确保 GitHub 代码能通过用户的真实 API 和本地授权小说形成闭环。
 
-当前正文批处理脚本会排除目录、关键词、录入和校对等前置文档，并写入新的正文专用 SQLite：
+## References
 
-```powershell
-$env:REQUEST_TIMEOUT_S = "180"
-python scripts\batch_ingest_epub.py "data/raw/01我想成为影之强者！.epub" `
-  --max-chapters 2 `
-  --max-episodes 2 `
-  --batch-size 2
-```
-
-生成评估候选：
-
-```powershell
-python scripts\generate_case_candidates.py `
-  "data/raw/01我想成为影之强者！.epub" `
-  --limit 2
-```
-
-旧数据库不会自动删除。建议将旧库视为历史实验产物，新库命名为 `*-content-batch.sqlite3`，这样可以避免目录文档污染正文评估。
-
-## 运行查询切片
-
-当前查询切片仍是脚本级入口，而不是 HTTP API：
-
-```powershell
-python scripts\smoke_query.py
-```
-
-它验证检索、带 citation 的答案生成以及证据不足时的 abstention。下一阶段会把这些能力封装为稳定的 application service 和 `/v1/query` API，调用方不再直接操作 LangGraph state 或 SQLite 连接。
-
-## 运行评估
-
-候选 gold case 需要人工检查后，将 `approved` 改为 `true`，再交给评估 runner。评估输入只允许使用 cutoff 之前可见的正文，held-out 内容不能泄漏到被测检索器或 Agent。运行入口：
-
-```powershell
-python scripts\run_evaluation.py --help
-```
-
-当前评估重点包括 Recall@k、MRR、citation precision 和 temporal leakage。真实报告形成前，不应把自动生成但未人工审批的候选当作 gold truth。
-
-## 目录结构
-
-```text
-src/omni_memory/
-  config/       环境配置
-  evaluation/   TXT/EPUB、cutoff、gold span、metrics、runner
-  graphs/       LangGraph ingestion/query workflows
-  llm/          OpenAI-compatible client、prompts、extractors
-  retrieval/   retriever protocol、SQLite retriever、grounding
-  schemas/      Episode、memory、query、asset、evaluation schemas
-  stores/       SQLite persistence、commit policy
-scripts/        本地 smoke、解析、摄入、候选和评估命令
-tests/          unit/integration tests
-docs/           设计、评估和工程基线
-```
-
-## 后续唯一主线
-
-下一阶段先完成后端闭环，而不是继续堆零散指标：
-
-1. 提供 `/health`、`/v1/memories/ingest`、`/v1/memories/search`、`/v1/query` 和 `/v1/runs/{run_id}`。
-2. 将 LangGraph 封装在 application service 后面，建立稳定 request/response schema。
-3. 增加 run、request、model-call 审计，记录调用状态、耗时、重试和 usage 可得性，但默认不保存原文。
-4. 加入 Episode 幂等键、任务状态和失败恢复。
-5. 将 fact 级失败隔离，合法事实提交，非法事实进入 review queue。
-6. 在 API 闭环稳定后实现 BM25 + semantic + temporal hybrid retrieval。
-7. 最后扩展图片 OCR/caption/embedding 和多模态引用。
-
-## 数据与提交规则
-
-授权小说仍属于受版权保护的本地数据。仓库只提交代码、schema、脱敏测试夹具、统计报告和 offset，不提交小说正文、图片原文件、SQLite、progress JSONL、gold case 原文或 API key。提交前检查：
-
-```powershell
-git status --short
-```
-
-## 工程基线
-
-截至仓库提交 `a986469`，准确的完成度是：S0 领域模型已完成，S1 离线核心垂直切片基本完成，S2 真实小说评估进行中，S3 可用本地后端未开始，S4 Agent 服务化未完成，S5 混合检索未开始，S6 多模态仅有资产元数据，S7 质量门禁只有基础框架。
+[1]: https://docs.langchain.com/oss/python/langgraph/persistence "LangGraph Persistence"
+[2]: https://docs.mem0.ai/introduction "Mem0 Documentation"
+[3]: https://github.com/mem0ai/mem0 "mem0ai/mem0"
+[4]: https://github.com/NevaMind-AI/memU "NevaMind-AI/memU"
