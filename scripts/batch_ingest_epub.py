@@ -17,9 +17,18 @@ from omni_memory.schemas.memory import Episode
 from omni_memory.stores.commit import commit_candidates
 from omni_memory.stores.sqlite_store import SQLiteMemoryStore
 
+FRONT_MATTER_MARKERS = ("目录", "关键词", "作者：", "插画：", "录入：", "校对：")
+
 
 def log(message: str) -> None:
     print(message, flush=True)
+
+
+def is_content_chapter(chapter) -> bool:
+    preview = chapter.text[:500]
+    return len(chapter.text) >= 500 and not any(
+        marker in preview for marker in FRONT_MATTER_MARKERS
+    )
 
 
 def load_completed(path: Path) -> set[str]:
@@ -31,8 +40,8 @@ def load_completed(path: Path) -> set[str]:
             continue
         record = json.loads(line)
         if record.get("status") in {"committed", "empty"}:
-            completed.add(record["episode_id"])
-    return completed
+            completed.update(record.get("episode_ids", [record.get("episode_id", "")]))
+    return {item for item in completed if item}
 
 
 def process_batch(
@@ -66,7 +75,6 @@ def process_batch(
                         "issue_count": len(issues),
                         "issue_codes": [issue.code for issue in issues],
                         "issue_messages": [issue.message for issue in issues],
-                        "candidate_statements": [candidate.statement for candidate in candidates],
                     }
                 else:
                     store.put_many(committed)
@@ -93,35 +101,50 @@ def process_batch(
         progress.flush()
         raise
 
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("source", type=Path)
     parser.add_argument("--max-chapters", type=int, default=2)
-    parser.add_argument("--max-episodes", type=int, default=8)
+    parser.add_argument("--max-episodes", type=int, default=2)
     parser.add_argument("--batch-size", type=int, default=2)
+    parser.add_argument("--database", type=Path)
+    parser.add_argument("--progress", type=Path)
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
 
+    if args.max_chapters <= 0 or args.max_episodes <= 0 or args.batch_size <= 0:
+        raise SystemExit("max-chapters、max-episodes 和 batch-size 必须大于 0")
+
     parsed = parse_source(args.source)
+    content_chapters = tuple(
+        chapter for chapter in parsed.chapters if is_content_chapter(chapter)
+    )
     chapters = parsed_chapters_to_novel_chapters(
-        parsed.chapters,
-        max_chapters=args.max_chapters,
+        content_chapters[: args.max_chapters]
     )
     chunks = split_chapters(tuple(chapters), max_chars=800)[: args.max_episodes]
-    episodes = chunks_to_episodes(
-        chunks,
-        ingested_at=datetime.now(UTC),
-        source=f"authorized-local:{args.source.name}",
-    )
-    database = Path("artifacts") / f"{args.source.stem}-batch.sqlite3"
-    progress_path = Path("artifacts") / f"{args.source.stem}-batch-progress.jsonl"
-    completed = load_completed(progress_path) if args.resume else set()
-    pending = [episode for episode in episodes if episode.episode_id not in completed]
-    log(
-        f"input_chapters={len(chapters)} input_episodes={len(episodes)} "
-        f"pending_episodes={len(pending)} batch_size={args.batch_size}"
+    episodes = list(
+        chunks_to_episodes(
+            chunks,
+            ingested_at=datetime.now(UTC),
+            source=f"authorized-local:{args.source.name}",
+        )
     )
 
+    database = args.database or Path("artifacts") / f"{args.source.stem}-content-batch.sqlite3"
+    progress_path = args.progress or Path("artifacts") / f"{args.source.stem}-content-progress.jsonl"
+    completed = load_completed(progress_path) if args.resume else set()
+    pending = [episode for episode in episodes if episode.episode_id not in completed]
+
+    log(
+        f"content_chapters={len(content_chapters)} selected_chapters={len(chapters)} "
+        f"input_episodes={len(episodes)} pending_episodes={len(pending)} "
+        f"batch_size={args.batch_size}"
+    )
+
+    database.parent.mkdir(parents=True, exist_ok=True)
+    progress_path.parent.mkdir(parents=True, exist_ok=True)
     with SQLiteMemoryStore(database) as store:
         store.put_assets(assets_to_records(parsed.assets))
         model = get_chat_model()
@@ -130,7 +153,10 @@ def main() -> None:
                 batch = pending[start : start + args.batch_size]
                 log(f"batch:start index={start // args.batch_size + 1} size={len(batch)}")
                 process_batch(batch, model=model, store=store, progress=progress)
-        log(f"complete committed_memory_count={store.count()} asset_count={len(store.list_assets())}")
+        log(
+            f"complete database={database} committed_memory_count={store.count()} "
+            f"asset_count={len(store.list_assets())} progress={progress_path}"
+        )
 
 
 if __name__ == "__main__":
