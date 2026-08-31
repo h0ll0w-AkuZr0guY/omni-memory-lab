@@ -15,13 +15,16 @@ from omni_memory.schemas.memory import (
     ValidationIssue,
 )
 from omni_memory.schemas.query import GroundedAnswer, MemoryQuery, RetrievedMemory
+from omni_memory.schemas.report import CaseEvaluationResult, EvaluationReport
 
 __all__ = [
+    "CaseEvaluationResult",
     "CommittedFact",
     "CutoffPolicy",
     "DatasetManifest",
     "Episode",
     "EvaluationCase",
+    "EvaluationReport",
     "FactCandidate",
     "FactExtraction",
     "GroundedAnswer",
