@@ -4,9 +4,11 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 
 from omni_memory.llm.client import get_chat_model
+from omni_memory.llm.observability import invoke_with_observation
 from omni_memory.retrieval.grounding import validate_grounded_answer
 from omni_memory.retrieval.sqlite_retriever import SQLiteMemoryRetriever
 from omni_memory.schemas.query import GroundedAnswer, MemoryQuery, RetrievedMemory
+from omni_memory.stores.platform_store import PlatformStore
 from omni_memory.stores.sqlite_store import SQLiteMemoryStore
 
 ANSWER_SYSTEM_PROMPT = """
@@ -37,6 +39,8 @@ def retrieve_node(
 def answer_node(
     state: QueryGraphState,
     model=None,
+    call_store: PlatformStore | None = None,
+    run_id: str | None = None,
 ) -> dict[str, GroundedAnswer]:
     retrieved = state.get("retrieved", [])
     if not retrieved:
@@ -60,11 +64,15 @@ def answer_node(
         GroundedAnswer,
         method="json_mode",
     )
-    result = structured_model.invoke(
+    result = invoke_with_observation(
+        structured_model,
         [
             SystemMessage(content=ANSWER_SYSTEM_PROMPT),
             HumanMessage(content=prompt),
-        ]
+        ],
+        operation="grounded_query_answer",
+        store=call_store,
+        run_id=run_id,
     )
     if isinstance(result, GroundedAnswer):
         return {"draft_answer": result}
@@ -96,6 +104,8 @@ def mark_abstained(state: QueryGraphState) -> dict[str, object]:
 def build_query_graph(
     store: SQLiteMemoryStore,
     model=None,
+    call_store: PlatformStore | None = None,
+    run_id: str | None = None,
 ):
     retriever = SQLiteMemoryRetriever(store)
 
@@ -103,7 +113,12 @@ def build_query_graph(
         return retrieve_node(state, retriever)
 
     def answer_with_model(state: QueryGraphState):
-        return answer_node(state, model=model)
+        return answer_node(
+            state,
+            model=model,
+            call_store=call_store,
+            run_id=run_id,
+        )
 
     builder = StateGraph(QueryGraphState)
     builder.add_node("retrieve", retrieve_with_store)

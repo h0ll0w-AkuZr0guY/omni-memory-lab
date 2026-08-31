@@ -9,6 +9,7 @@ from omni_memory.llm.extractor import (
 )
 from omni_memory.schemas.memory import CommittedFact, Episode, FactCandidate, ValidationIssue
 from omni_memory.stores.commit import commit_candidates
+from omni_memory.stores.platform_store import PlatformStore
 from omni_memory.stores.sqlite_store import SQLiteMemoryStore
 
 
@@ -24,8 +25,15 @@ class MemoryGraphState(TypedDict, total=False):
 def extract_node(
     state: MemoryGraphState,
     model: ModelWithStructuredOutput | None = None,
+    call_store: PlatformStore | None = None,
+    run_id: str | None = None,
 ) -> dict[str, list[FactCandidate]]:
-    extraction = extract_fact_candidates(state["episode"], model=model)
+    extraction = extract_fact_candidates(
+        state["episode"],
+        model=model,
+        call_store=call_store,
+        run_id=run_id,
+    )
     return {"candidates": extraction.facts}
 
 
@@ -70,11 +78,18 @@ def persist_node(
 def build_memory_graph(
     model: ModelWithStructuredOutput | None = None,
     store: SQLiteMemoryStore | None = None,
+    call_store: PlatformStore | None = None,
+    run_id: str | None = None,
 ):
     """构造 Episode  抽取  校验  可选持久化的记忆图。"""
 
     def extract_with_config(state: MemoryGraphState) -> dict[str, list[FactCandidate]]:
-        return extract_node(state, model=model)
+        return extract_node(
+            state,
+            model=model,
+            call_store=call_store,
+            run_id=run_id,
+        )
 
     builder = StateGraph(MemoryGraphState)
     builder.add_node("extract_candidates", extract_with_config)

@@ -1,10 +1,10 @@
 import json
+import os
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
 from uuid import uuid4
 
-from omni_memory.config.settings import get_settings
 from omni_memory.schemas.platform import ModelCallRecord
 from omni_memory.stores.platform_store import PlatformStore
 
@@ -34,6 +34,14 @@ def _response_metadata(result: Any) -> dict[str, Any]:
     return {}
 
 
+def _runtime_model_details(invoker: Any) -> tuple[str, str]:
+    model = getattr(invoker, "model_name", None) or getattr(invoker, "model", None)
+    base_url = getattr(invoker, "openai_api_base", None) or os.getenv(
+        "BASE_URL", "unknown://provider"
+    )
+    return str(model or os.getenv("MODEL", "unknown-model")), str(base_url)
+
+
 def invoke_with_observation(
     invoker: Any,
     payload: Any,
@@ -43,7 +51,7 @@ def invoke_with_observation(
     run_id: str | None = None,
 ) -> Any:
     """调用 LangChain Runnable 并可选写入脱敏 model-call 记录。"""
-    settings = get_settings()
+    model_name, base_url = _runtime_model_details(invoker)
     call_id = f"call_{uuid4().hex}"
     started_at = datetime.now(UTC)
     try:
@@ -56,8 +64,8 @@ def invoke_with_observation(
             call_id=call_id,
             run_id=run_id,
             operation=operation,
-            model=settings.model,
-            provider_host=urlparse(settings.base_url).netloc,
+            model=model_name,
+            provider_host=urlparse(base_url).netloc or base_url,
             started_at=started_at,
             finished_at=finished_at,
             success=True,
@@ -76,8 +84,8 @@ def invoke_with_observation(
             call_id=call_id,
             run_id=run_id,
             operation=operation,
-            model=settings.model,
-            provider_host=urlparse(settings.base_url).netloc,
+            model=model_name,
+            provider_host=urlparse(base_url).netloc or base_url,
             started_at=started_at,
             finished_at=finished_at,
             success=False,

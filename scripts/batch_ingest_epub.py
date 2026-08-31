@@ -14,6 +14,7 @@ from omni_memory.evaluation.source_parser import parse_source
 from omni_memory.llm.batch_extractor import extract_batch
 from omni_memory.llm.client import get_chat_model
 from omni_memory.schemas.memory import Episode
+from omni_memory.services.run_context import RunContext
 from omni_memory.stores.commit import commit_candidates
 from omni_memory.stores.platform_store import PlatformStore
 from omni_memory.stores.sqlite_store import SQLiteMemoryStore
@@ -51,6 +52,7 @@ def process_batch(
     model,
     store: SQLiteMemoryStore,
     call_store: PlatformStore,
+    run_id: str,
     progress,
 ) -> None:
     started = perf_counter()
@@ -59,6 +61,7 @@ def process_batch(
             episodes,
             model=model,
             call_store=call_store,
+            run_id=run_id,
         )
         for episode in episodes:
             candidates = grouped.get(episode.episode_id, [])
@@ -154,7 +157,12 @@ def main() -> None:
     with SQLiteMemoryStore(database) as store, PlatformStore(database) as call_store:
         store.put_assets(assets_to_records(parsed.assets))
         model = get_chat_model()
-        with progress_path.open("a", encoding="utf-8") as progress:
+        with RunContext(
+            call_store,
+            tenant_id=args.source.stem,
+            namespace="novel-ingestion",
+            operation="batch_ingest_epub",
+        ) as run, progress_path.open("a", encoding="utf-8") as progress:
             for start in range(0, len(pending), args.batch_size):
                 batch = pending[start : start + args.batch_size]
                 log(f"batch:start index={start // args.batch_size + 1} size={len(batch)}")
@@ -163,11 +171,22 @@ def main() -> None:
                     model=model,
                     store=store,
                     call_store=call_store,
+                    run_id=run.run.run_id,
                     progress=progress,
                 )
+            final_run = run.succeed(
+                {
+                    "input_episodes": len(pending),
+                    "committed_memories": store.count(),
+                    "model_calls": len(call_store.list_model_calls(run.run.run_id)),
+                }
+            )
         log(
-            f"complete database={database} committed_memory_count={store.count()} "
-            f"asset_count={len(store.list_assets())} progress={progress_path}"
+            f"complete database={database} run_id={final_run.run_id} "
+            f"run_status={final_run.status} committed_memory_count={store.count()} "
+            f"asset_count={len(store.list_assets())} "
+            f"model_call_count={len(call_store.list_model_calls(final_run.run_id))} "
+            f"progress={progress_path}"
         )
 
 

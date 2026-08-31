@@ -184,13 +184,19 @@ neuro-book 事件只在 adapter 层转换，核心层只看到通用 `MemoryInpu
 python scripts\smoke_model.py
 ```
 
-本轮的 observability helper 需要在模型调用方传入 `PlatformStore` 才会落盘 call record。下一轮会把 ingestion/query LangGraph 全部接入统一 run context；当前可通过对应单元测试验证成功和失败记录：
+本轮的 observability helper 需要在模型调用方传入 `PlatformStore` 才会落盘 call record。当前 batch EPUB ingestion 已经传入统一 `run_id`，完成时会打印 `run_id、run_status、model_call_count`；单 Episode Graph 也支持 `call_store/run_id` 参数。下一步会把 query LangGraph 和 HTTP service 全部接入统一 run context。当前可通过对应单元测试验证成功和失败记录：
 
 ```powershell
 python -m pytest tests/unit/test_model_observability.py -q
 ```
 
-预期至少包含一条 `success=True`、一条 `success=False`。不要把 API key、小说原文或完整 prompt 贴到反馈中。
+预期至少包含一条 `success=True`、一条 `success=False`。使用真实小说批处理后，查询新数据库时应能看到与最终输出中 `model_call_count` 相同数量的记录：
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/v1/model-calls"
+```
+
+注意：如果批处理使用的 database 不是 API 默认的 `artifacts/platform.sqlite3`，应直接读取对应数据库，或用同一路径启动 API。不要把 API key、小说原文或完整 prompt 贴到反馈中。
 
 ## 反馈格式
 
