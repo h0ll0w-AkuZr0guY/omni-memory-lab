@@ -13,3 +13,6 @@ data/raw/
 data/processed/
 *.log
 requirements.lock.txt
+
+artifacts/*.sqlite3
+artifacts/*progress.jsonl

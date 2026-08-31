@@ -8,7 +8,6 @@ from omni_memory.schemas.memory import CommittedFact
 from omni_memory.schemas.query import MemoryQuery
 from omni_memory.stores.sqlite_store import SQLiteMemoryStore
 
-
 DB = Path("artifacts") / "smoke-query.sqlite3"
 
 

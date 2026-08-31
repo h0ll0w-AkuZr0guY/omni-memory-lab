@@ -1,3 +1,5 @@
+from omni_memory.schemas.asset import AssetRecord
+from omni_memory.schemas.batch_extraction import BatchFactCandidate, BatchFactExtraction
 from omni_memory.schemas.evaluation import (
     CutoffPolicy,
     DatasetManifest,
@@ -18,6 +20,9 @@ from omni_memory.schemas.query import GroundedAnswer, MemoryQuery, RetrievedMemo
 from omni_memory.schemas.report import CaseEvaluationResult, EvaluationReport
 
 __all__ = [
+    "AssetRecord",
+    "BatchFactCandidate",
+    "BatchFactExtraction",
     "CaseEvaluationResult",
     "CommittedFact",
     "CutoffPolicy",

@@ -1,9 +1,10 @@
+from datetime import UTC, datetime
+
 from omni_memory.evaluation.chunking import split_chapter
 from omni_memory.evaluation.cutoff import NovelChapter, apply_cutoff
 from omni_memory.evaluation.gold_mapping import map_source_span_to_chunks
 from omni_memory.evaluation.ingest import chunks_to_episodes
 from omni_memory.schemas.evaluation import CutoffPolicy, SourceSpan
-from datetime import UTC, datetime
 
 chapters = tuple(
     NovelChapter(f"chapter-{index}", index, f"第{index}章：人物在这一章发生了事件。")

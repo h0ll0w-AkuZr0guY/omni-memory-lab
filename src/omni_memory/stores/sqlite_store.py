@@ -1,9 +1,11 @@
 import json
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Self
 from uuid import uuid4
 
+from omni_memory.schemas.asset import AssetRecord
 from omni_memory.schemas.memory import CommittedFact, MemoryAuditEvent
 
 
@@ -28,6 +30,11 @@ class SQLiteMemoryStore:
                 memory_id TEXT NOT NULL,
                 action TEXT NOT NULL,
                 occurred_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS assets (
+                asset_id TEXT PRIMARY KEY,
+                payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
             );
             """
         )
@@ -137,4 +144,31 @@ class SQLiteMemoryStore:
 
     def __exit__(self, *_: object) -> None:
         self.close()
+
+    def put_assets(self, assets: list[AssetRecord]) -> None:
+        now = datetime.now(UTC).isoformat()
+        self.connection.executemany(
+            """
+            INSERT OR REPLACE INTO assets (asset_id, payload_json, created_at)
+            VALUES (?, ?, ?)
+            """,
+            [
+                (
+                    asset.asset_id,
+                    json.dumps(asset.model_dump(mode="json"), ensure_ascii=False),
+                    now,
+                )
+                for asset in assets
+            ],
+        )
+        self.connection.commit()
+
+    def list_assets(self) -> list[AssetRecord]:
+        rows = self.connection.execute(
+            "SELECT payload_json FROM assets ORDER BY created_at, asset_id"
+        ).fetchall()
+        return [
+            AssetRecord.model_validate(json.loads(row["payload_json"]))
+            for row in rows
+        ]
 
