@@ -15,6 +15,7 @@ from omni_memory.llm.batch_extractor import extract_batch
 from omni_memory.llm.client import get_chat_model
 from omni_memory.schemas.memory import Episode
 from omni_memory.stores.commit import commit_candidates
+from omni_memory.stores.platform_store import PlatformStore
 from omni_memory.stores.sqlite_store import SQLiteMemoryStore
 
 FRONT_MATTER_MARKERS = ("目录", "关键词", "作者：", "插画：", "录入：", "校对：")
@@ -49,11 +50,16 @@ def process_batch(
     *,
     model,
     store: SQLiteMemoryStore,
+    call_store: PlatformStore,
     progress,
 ) -> None:
     started = perf_counter()
     try:
-        grouped = extract_batch(episodes, model=model)
+        grouped = extract_batch(
+            episodes,
+            model=model,
+            call_store=call_store,
+        )
         for episode in episodes:
             candidates = grouped.get(episode.episode_id, [])
             if not candidates:
@@ -145,14 +151,20 @@ def main() -> None:
 
     database.parent.mkdir(parents=True, exist_ok=True)
     progress_path.parent.mkdir(parents=True, exist_ok=True)
-    with SQLiteMemoryStore(database) as store:
+    with SQLiteMemoryStore(database) as store, PlatformStore(database) as call_store:
         store.put_assets(assets_to_records(parsed.assets))
         model = get_chat_model()
         with progress_path.open("a", encoding="utf-8") as progress:
             for start in range(0, len(pending), args.batch_size):
                 batch = pending[start : start + args.batch_size]
                 log(f"batch:start index={start // args.batch_size + 1} size={len(batch)}")
-                process_batch(batch, model=model, store=store, progress=progress)
+                process_batch(
+                    batch,
+                    model=model,
+                    store=store,
+                    call_store=call_store,
+                    progress=progress,
+                )
         log(
             f"complete database={database} committed_memory_count={store.count()} "
             f"asset_count={len(store.list_assets())} progress={progress_path}"

@@ -4,8 +4,10 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from omni_memory.llm.client import get_chat_model
+from omni_memory.llm.observability import invoke_with_observation
 from omni_memory.schemas.batch_extraction import BatchFactExtraction
 from omni_memory.schemas.memory import Episode, FactCandidate
+from omni_memory.stores.platform_store import PlatformStore
 
 BATCH_SYSTEM_PROMPT = """
 你是证据优先的小说记忆抽取器。输入包含多个彼此独立的 episode。
@@ -35,6 +37,8 @@ def build_batch_prompt(episodes: list[Episode]) -> str:
 def extract_batch(
     episodes: list[Episode],
     model: Any | None = None,
+    call_store: PlatformStore | None = None,
+    run_id: str | None = None,
 ) -> dict[str, list[FactCandidate]]:
     if not episodes:
         return {}
@@ -44,11 +48,15 @@ def extract_batch(
         BatchFactExtraction,
         method="json_mode",
     )
-    result = structured_model.invoke(
+    result = invoke_with_observation(
+        structured_model,
         [
             SystemMessage(content=BATCH_SYSTEM_PROMPT),
             HumanMessage(content=build_batch_prompt(episodes)),
-        ]
+        ],
+        operation="batch_fact_extraction",
+        store=call_store,
+        run_id=run_id,
     )
     extraction = (
         result
