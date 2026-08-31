@@ -31,8 +31,8 @@ def main() -> None:
     )
     policy = CutoffPolicy(mask_strategy="suffix", visible_ratio=0.8)
     raise SystemExit(
-        "请先在评估 cases 中填写 gold_answer 与 gold_source_spans，"
-        "再调用 EvaluationRunner；本脚本故意不自动从 holdout 生成答案，避免 gold 泄漏。"
+        f"请先在评估 cases 中填写 gold_answer 与 gold_source_spans；"
+        f"dataset={manifest.dataset_id}; cutoff={policy.mask_strategy}"
     )
 
 
