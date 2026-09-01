@@ -34,12 +34,18 @@ def _response_metadata(result: Any) -> dict[str, Any]:
     return {}
 
 
-def _runtime_model_details(invoker: Any) -> tuple[str, str]:
-    model = getattr(invoker, "model_name", None) or getattr(invoker, "model", None)
-    base_url = getattr(invoker, "openai_api_base", None) or os.getenv(
-        "BASE_URL", "unknown://provider"
-    )
-    return str(model or os.getenv("MODEL", "unknown-model")), str(base_url)
+def _runtime_model_details(invoker: Any, model_source: Any | None = None) -> tuple[str, str]:
+    for candidate in (model_source, invoker):
+        if candidate is None:
+            continue
+        model = getattr(candidate, "model_name", None) or getattr(candidate, "model", None)
+        base_url = getattr(candidate, "openai_api_base", None) or getattr(candidate, "base_url", None)
+        if model or base_url:
+            return (
+                str(model or os.getenv("MODEL", "unknown-model")),
+                str(base_url or os.getenv("BASE_URL", "unknown://provider")),
+            )
+    return os.getenv("MODEL", "unknown-model"), os.getenv("BASE_URL", "unknown://provider")
 
 
 def invoke_with_observation(
@@ -49,9 +55,10 @@ def invoke_with_observation(
     operation: str,
     store: PlatformStore | None = None,
     run_id: str | None = None,
+    model_source: Any | None = None,
 ) -> Any:
     """调用 LangChain Runnable 并可选写入脱敏 model-call 记录。"""
-    model_name, base_url = _runtime_model_details(invoker)
+    model_name, base_url = _runtime_model_details(invoker, model_source)
     call_id = f"call_{uuid4().hex}"
     started_at = datetime.now(UTC)
     try:

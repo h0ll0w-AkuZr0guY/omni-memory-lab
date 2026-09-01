@@ -301,6 +301,23 @@ class PlatformStore:
         ).fetchone()
         return RunRecord.model_validate(json.loads(row["payload_json"])) if row else None
 
+    def list_runs(
+        self,
+        tenant_id: str | None = None,
+        namespace: str | None = None,
+    ) -> list[RunRecord]:
+        sql = "SELECT payload_json FROM platform_runs WHERE 1=1"
+        params: list[str] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id=?"
+            params.append(tenant_id)
+        if namespace is not None:
+            sql += " AND namespace=?"
+            params.append(namespace)
+        sql += " ORDER BY started_at, run_id"
+        rows = self.connection.execute(sql, params).fetchall()
+        return [RunRecord.model_validate(json.loads(row["payload_json"])) for row in rows]
+
     def save_model_call(self, record: ModelCallRecord) -> None:
         self.connection.execute(
             "INSERT INTO platform_model_calls VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",

@@ -73,6 +73,7 @@ def answer_node(
         operation="grounded_query_answer",
         store=call_store,
         run_id=run_id,
+        model_source=chat_model,
     )
     if isinstance(result, GroundedAnswer):
         return {"draft_answer": result}

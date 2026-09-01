@@ -194,6 +194,13 @@ class MemoryService:
     def get_run(self, run_id: str) -> RunRecord | None:
         return self.store.get_run(run_id)
 
+    def list_runs(
+        self,
+        tenant_id: str | None = None,
+        namespace: str | None = None,
+    ) -> list[RunRecord]:
+        return self.store.list_runs(tenant_id, namespace)
+
     def save_model_call(self, call: ModelCallRecord) -> None:
         self.store.save_model_call(call)
 

@@ -48,6 +48,7 @@ def extract_fact_candidates(
         operation="fact_extraction",
         store=call_store,
         run_id=run_id,
+        model_source=chat_model,
     )
 
     if isinstance(result, FactExtraction):

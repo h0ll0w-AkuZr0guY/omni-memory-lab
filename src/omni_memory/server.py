@@ -117,6 +117,13 @@ def create_app(
     def list_audit(tenant_id: str, namespace: str, subject_id: str | None = None):
         return service.audit(tenant_id, namespace, subject_id)
 
+    @app.get("/v1/runs", response_model=list[RunRecord])
+    def list_runs(
+        tenant_id: str | None = Query(default=None),
+        namespace: str | None = Query(default=None),
+    ) -> list[RunRecord]:
+        return service.list_runs(tenant_id, namespace)
+
     @app.get("/v1/runs/{run_id}", response_model=RunRecord)
     def get_run(run_id: str) -> RunRecord:
         run = service.get_run(run_id)

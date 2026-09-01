@@ -198,6 +198,25 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/v1/model-calls"
 
 注意：如果批处理使用的 database 不是 API 默认的 `artifacts/platform.sqlite3`，应直接读取对应数据库，或用同一路径启动 API。不要把 API key、小说原文或完整 prompt 贴到反馈中。
 
+## Timeout 与运行审计复验
+
+如果 provider 请求超时，进程可以抛出 `OpenAITimeoutError`，但 observer 仍应写入一条 `success=False` 的 model-call。使用同一数据库检查：
+
+```powershell
+python -c "from omni_memory.stores.platform_store import PlatformStore; s=PlatformStore(r'artifacts/observability-test.sqlite3'); print([(c.run_id,c.operation,c.model,c.provider_host,c.success,c.error_type) for c in s.list_model_calls()]); print([(r.run_id,r.operation,r.status,r.error_type,r.counters) for r in s.list_runs()]); s.close()"
+```
+
+正常失败记录应包含 `error_type=OpenAITimeoutError`，而不应丢失。成功调用应显示配置中的模型名和 provider host，例如 `glm-5.3-flash` 与 `open.bigmodel.cn`；如果仍显示 `unknown-model` 或 `provider`，说明调用方没有传入原始 chat model。
+
+HTTP 查询也支持：
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/v1/runs"
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/v1/model-calls"
+```
+
+不要把 API key、小说原文或完整 prompt 贴到反馈中。
+
 ## 反馈格式
 
 请只反馈以下脱敏字段：

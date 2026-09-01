@@ -57,6 +57,7 @@ def extract_batch(
         operation="batch_fact_extraction",
         store=call_store,
         run_id=run_id,
+        model_source=chat_model,
     )
     extraction = (
         result
