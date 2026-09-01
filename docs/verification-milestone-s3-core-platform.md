@@ -217,6 +217,30 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/v1/model-calls"
 
 不要把 API key、小说原文或完整 prompt 贴到反馈中。
 
+## Batch timeout retry 与失败隔离
+
+批处理支持 `--max-attempts` 和 `--retry-backoff-s`。短暂的 timeout/connection error 会在同一个 run_id 下重试，每次尝试都会产生独立 model-call；最终失败不会让同批次的其他 Episode 被伪造为 committed，而是为每个受影响 Episode 写入 `provider_error` progress 记录。
+
+```powershell
+python scripts\batch_ingest_epub.py `
+  "data/raw/01我想成为影之强者！.epub" `
+  --max-chapters 1 `
+  --max-episodes 1 `
+  --batch-size 1 `
+  --max-attempts 2 `
+  --retry-backoff-s 1 `
+  --database artifacts\retry-check.sqlite3 `
+  --progress artifacts\retry-check-progress.jsonl
+```
+
+完成输出应包含 `run_id、run_status、model_call_count、failed_batches`。如果最终成功，model-call 数量可能大于 1；如果 provider 最终失败，progress 中应出现 `provider_error`，SQLite 中应保留 `success=False` 的调用记录，且 `committed_memory_count` 不应因为失败而增加。使用 `--resume` 时，`committed、empty、needs_review` Episode 不会重复处理，`provider_error` Episode 会保留为待重试状态。
+
+离线 retry 契约测试：
+
+```powershell
+python -m pytest tests/unit/test_batch_retry.py -q
+```
+
 ## 反馈格式
 
 请只反馈以下脱敏字段：

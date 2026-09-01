@@ -1,4 +1,5 @@
 from collections import defaultdict
+from time import sleep
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -39,6 +40,8 @@ def extract_batch(
     model: Any | None = None,
     call_store: PlatformStore | None = None,
     run_id: str | None = None,
+    max_attempts: int = 2,
+    retry_backoff_s: float = 1.0,
 ) -> dict[str, list[FactCandidate]]:
     if not episodes:
         return {}
@@ -48,17 +51,35 @@ def extract_batch(
         BatchFactExtraction,
         method="json_mode",
     )
-    result = invoke_with_observation(
-        structured_model,
-        [
-            SystemMessage(content=BATCH_SYSTEM_PROMPT),
-            HumanMessage(content=build_batch_prompt(episodes)),
-        ],
-        operation="batch_fact_extraction",
-        store=call_store,
-        run_id=run_id,
-        model_source=chat_model,
-    )
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be >= 1")
+    if retry_backoff_s < 0:
+        raise ValueError("retry_backoff_s must be >= 0")
+
+    messages = [
+        SystemMessage(content=BATCH_SYSTEM_PROMPT),
+        HumanMessage(content=build_batch_prompt(episodes)),
+    ]
+    result = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            result = invoke_with_observation(
+                structured_model,
+                messages,
+                operation="batch_fact_extraction",
+                store=call_store,
+                run_id=run_id,
+                model_source=chat_model,
+            )
+            break
+        except Exception as error:
+            retryable = isinstance(error, (TimeoutError, ConnectionError)) or "Timeout" in type(error).__name__
+            if not retryable or attempt == max_attempts:
+                raise
+            if retry_backoff_s:
+                sleep(retry_backoff_s * attempt)
+    if result is None:
+        raise RuntimeError("batch extraction returned no result")
     extraction = (
         result
         if isinstance(result, BatchFactExtraction)
